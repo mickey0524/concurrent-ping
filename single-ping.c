@@ -92,7 +92,7 @@ void send_packet()
     if (sendto(sockfd, sendpacket, packetsize, 0, (struct sockaddr *)
       &dest_addr, sizeof(dest_addr)) < 0)
     {
-      perror("sendto error");
+      printf("sendto error\n");
       continue;
     }
     sleep(1);
@@ -157,7 +157,7 @@ void recv_packet()
     {
       if (errno == EINTR)
         continue;
-      perror("recvfrom error");
+      printf("recvfrom error\n");
       continue;
     }
     gettimeofday(&tvrecv, NULL);
@@ -173,7 +173,6 @@ int main(int argc, char *argv[])
   struct protoent *protocol;
 
   unsigned long inaddr = 0l;
-  int waittime = MAX_WAIT_TIME;
   int size = 50 * 1024;
 
   if (argc < 2)
@@ -183,13 +182,13 @@ int main(int argc, char *argv[])
   }
   if ((protocol = getprotobyname("icmp")) == NULL)
   {
-    perror("getprotobyname");
+    printf("getprotobyname\n");
     exit(1);
   }
 
   if ((sockfd = socket(AF_INET, SOCK_RAW, protocol->p_proto)) < 0)
   {
-    perror("socket error");
+    printf("socket error\n");
     exit(1);
   }
 
@@ -201,7 +200,7 @@ int main(int argc, char *argv[])
   {
     if ((host = gethostbyname(argv[1])) == NULL)
     {
-      perror("gethostbyname error");
+      printf("gethostbyname error\n");
       exit(1);
     }
     memcpy((char *)&dest_addr.sin_addr, host->h_addr, host->h_length);
@@ -212,7 +211,7 @@ int main(int argc, char *argv[])
   }
 
   pid = getpid();
-  printf("PING %s(%s): %d bytes data in ICMP packets.\n", argv[1],
+  printf("\nPING %s(%s): %d bytes data in ICMP packets.\n", argv[1],
          inet_ntoa(dest_addr.sin_addr), datalen);
   send_packet();
   recv_packet();
