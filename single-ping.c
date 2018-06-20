@@ -1,5 +1,8 @@
 #include <stdio.h>
 #include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/time.h>
 #include <arpa/inet.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -31,8 +34,6 @@ void statistics(int signo)
   printf("\n--------------------PING statistics-------------------\n");
   printf("%d packets transmitted, %d received , %%%d lost\n", nsend,
          nreceived, (nsend - nreceived) / nsend * 100);
-  close(sockfd);
-  exit(1);
 }
 
 unsigned short cal_chksum(unsigned short *addr, int len)
@@ -135,6 +136,7 @@ int unpack(char *buf, int len)
     rtt = tvrecv.tv_sec * 1000 + tvrecv.tv_usec / 1000;
     printf("%d byte from %s: icmp_seq=%u ttl=%d rtt=%.3f ms\n", len,
            inet_ntoa(from.sin_addr), icmp->icmp_seq, ip->ip_ttl, rtt);
+    return 0;
   }
   else {
     return -1;
@@ -153,7 +155,7 @@ void recv_packet()
   {
     alarm(MAX_WAIT_TIME);
     if ((n = recvfrom(sockfd, recvpacket, sizeof(recvpacket), 0,
-      (struct sockaddr *)&from, &fromlen)) < 0)
+      (struct sockaddr *)&from, (socklen_t *)&fromlen)) < 0)
     {
       if (errno == EINTR)
         continue;
@@ -172,7 +174,7 @@ int main(int argc, char *argv[])
   struct hostent *host;
   struct protoent *protocol;
 
-  unsigned long inaddr = 0l;
+  unsigned long inaddr;
   int size = 50 * 1024;
 
   if (argc < 2)
@@ -196,7 +198,8 @@ int main(int argc, char *argv[])
   setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &size, sizeof(size));
   bzero(&dest_addr, sizeof(dest_addr));
   dest_addr.sin_family = AF_INET;
-  if (inaddr = inet_addr(argv[1]) == INADDR_NONE)
+  inaddr = inet_addr(argv[1]) == INADDR_NONE;
+  if (inaddr)
   {
     if ((host = gethostbyname(argv[1])) == NULL)
     {
@@ -216,6 +219,7 @@ int main(int argc, char *argv[])
   send_packet();
   recv_packet();
   statistics(SIGALRM);
+  close(sockfd);
 
   return 0;
 }
