@@ -1,6 +1,9 @@
 #include <stdio.h>
 #include <signal.h>
+#include <stdlib.h>
+#include <string.h>
 #include <arpa/inet.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -132,6 +135,7 @@ int unpack(char *buf, int len)
     rtt = tvrecv.tv_sec * 1000 + tvrecv.tv_usec / 1000;
     printf("%d byte from %s: icmp_seq=%u ttl=%d rtt=%.3f ms\n", len,
            inet_ntoa(from.sin_addr), icmp->icmp_seq, ip->ip_ttl, rtt);
+    return 0;
   }
   else
   {
@@ -151,7 +155,7 @@ void recv_packet()
   {
     alarm(MAX_WAIT_TIME);
     if ((n = recvfrom(sockfd, recvpacket, sizeof(recvpacket), 0,
-                      (struct sockaddr *)&from, &fromlen)) < 0)
+      (struct sockaddr *)&from, (socklen_t *)&fromlen)) < 0)
     {
       if (errno == EINTR)
         continue;
@@ -197,12 +201,12 @@ int main(int argc, char *argv[])
 
   for (i = 1; i < argc; i++)
   {
-    inaddr = 0l;
     nsend = 0;
     nreceived = 0;
     bzero(&dest_addr, sizeof(dest_addr));
     dest_addr.sin_family = AF_INET;
-    if (inaddr = inet_addr(argv[i]) == INADDR_NONE)
+    inaddr = inet_addr(argv[i]) == INADDR_NONE;
+    if (inaddr)
     {
       if ((host = gethostbyname(argv[i])) == NULL)
       {
