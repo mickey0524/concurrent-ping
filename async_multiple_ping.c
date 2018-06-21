@@ -9,6 +9,7 @@
 #include <netinet/ip.h>
 #include <netinet/ip_icmp.h>
 #include <netdb.h>
+#include <pthread.h>
 
 #define PACKET_SIZE 4096
 #define MAX_WAIT_TIME 5
@@ -21,6 +22,12 @@ int datalen = 56;
 struct sockaddr_in dest_addr;
 struct sockaddr_in from;
 struct timeval tvrecv;
+
+struct event_loop_arg
+{
+  int *socketfds;
+  int length;
+};
 
 unsigned short cal_chksum(unsigned short *addr, int len) {
   int nleft = len;
@@ -130,7 +137,11 @@ void recv_packet(int socketfd)
   }
 }
 
-void event_loop(int *sockfds, int rfslength) {
+void *event_loop(void *arg) {
+  struct event_loop_arg *tmp = (struct event_loop_arg *) arg;
+  int *sockfds = tmp->socketfds;
+  int rfslength = tmp->length;
+
   fd_set rfds;
   int maxfd = 0, i;
 
@@ -166,6 +177,7 @@ void event_loop(int *sockfds, int rfslength) {
       }
     }
   }
+  return NULL;
 }
 
 int main(int argc, char *argv[]) {
@@ -208,8 +220,21 @@ int main(int argc, char *argv[]) {
     }
     send_packet(socketfds[i - 1]);
   }
-  
-  event_loop(socketfds, argc - 1);
+
+  int temp = 0;
+  pthread_t ntid;
+  struct event_loop_arg arg = {
+    socketfds,
+    argc - 1
+  };
+
+  if ((temp = pthread_create(&ntid, NULL, event_loop, &arg)) != 0)
+  {
+    printf("can't create thread: %s\n", strerror(temp));
+    return 0;
+  }
+
+  pthread_join(ntid, NULL);
 
   for (i = 0; i < argc - 1; i++) {
     close(socketfds[i]);
