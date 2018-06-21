@@ -54,6 +54,9 @@ unsigned short cal_chksum(unsigned short *addr, int len) {
   return answer;
 }
 
+/**
+ * 打包
+ */ 
 int pack(int pack_no, int socketfd) {
   int i, packsize;
   struct icmp *icmp;
@@ -73,6 +76,9 @@ int pack(int pack_no, int socketfd) {
   return packsize;
 }
 
+/**
+ * 发packet
+ */ 
 void send_packet(int socketfd) {
   int i = 0;
    
@@ -93,6 +99,9 @@ void tv_sub(struct timeval *out, struct timeval *in) {
   out->tv_sec -= in->tv_sec;
 }
 
+/**
+ * 解包
+ */ 
 int unpack(char *buf, int len, int socketfd, int *reachicmps) {
   int i, iphdrlen;
   struct ip *ip;
@@ -124,6 +133,9 @@ int unpack(char *buf, int len, int socketfd, int *reachicmps) {
   }
 }
 
+/**
+ * 收packet
+ */ 
 void recv_packet(int socketfd, int *reachicmps)
 {
   int n = 0;
@@ -139,6 +151,9 @@ void recv_packet(int socketfd, int *reachicmps)
   }
 }
 
+/**
+ * 异步处理回来的icmp帧的函数
+ */
 void *event_loop(void *arg) {
   struct event_loop_arg *tmp = (struct event_loop_arg *) arg;
   int *sockfds = tmp->socketfds;
@@ -202,8 +217,8 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
-  int *socketfds = (int *) malloc(sizeof(int) * (argc - 1));
-  int *reachicmps = (int *) malloc(sizeof(int) * (argc - 1));
+  int *socketfds = (int *) malloc(sizeof(int) * (argc - 1)); // socket句柄数组
+  int *reachicmps = (int *) malloc(sizeof(int) * (argc - 1)); // 记录每个站点回来的icmp帧数目的数组
   memset(reachicmps, 0, sizeof(int) * (argc - 1));
 
   for (i = 1; i < argc; i++) {
@@ -229,6 +244,7 @@ int main(int argc, char *argv[]) {
     send_packet(socketfds[i - 1]);
   }
 
+  // 启一个新的线程，接受回来的icpm帧，异步处理
   int temp = 0;
   pthread_t ntid;
   struct event_loop_arg arg = {
