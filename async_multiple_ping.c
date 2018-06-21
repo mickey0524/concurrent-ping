@@ -26,6 +26,7 @@ struct timeval tvrecv;
 struct event_loop_arg
 {
   int *socketfds;
+  int *reachicmps;
   int length;
 };
 
@@ -92,7 +93,7 @@ void tv_sub(struct timeval *out, struct timeval *in) {
   out->tv_sec -= in->tv_sec;
 }
 
-int unpack(char *buf, int len, int socketfd) {
+int unpack(char *buf, int len, int socketfd, int *reachicmps) {
   int i, iphdrlen;
   struct ip *ip;
   struct icmp *icmp;
@@ -115,6 +116,7 @@ int unpack(char *buf, int len, int socketfd) {
     rtt = tvrecv.tv_sec * 1000 + tvrecv.tv_usec / 1000;
     printf("%d byte from %s: icmp_seq=%u ttl=%d time=%.3f ms\n", len,
            inet_ntoa(from.sin_addr), icmp->icmp_seq, ip->ip_ttl, rtt);
+    *reachicmps += 1;
     return 0;
   }
   else {
@@ -122,7 +124,7 @@ int unpack(char *buf, int len, int socketfd) {
   }
 }
 
-void recv_packet(int socketfd)
+void recv_packet(int socketfd, int *reachicmps)
 {
   int n = 0;
   int fromlen = sizeof(from);
@@ -132,7 +134,7 @@ void recv_packet(int socketfd)
     printf("recvfrom error\n");
   }
   gettimeofday(&tvrecv, NULL);
-  if (unpack(recvpacket, n, socketfd) == -1) {
+  if (unpack(recvpacket, n, socketfd, reachicmps) == -1) {
     printf("unpack error\n");
   }
 }
@@ -141,6 +143,7 @@ void *event_loop(void *arg) {
   struct event_loop_arg *tmp = (struct event_loop_arg *) arg;
   int *sockfds = tmp->socketfds;
   int rfslength = tmp->length;
+  int *reachicmps = tmp->reachicmps;
 
   fd_set rfds;
   int maxfd = 0, i;
@@ -173,7 +176,9 @@ void *event_loop(void *arg) {
     }
     else {
       for (i = 0; i < rfslength; i++) {
-        recv_packet(sockfds[i]);
+        if (reachicmps[i] < MAX_SEND_PACKETS) {
+          recv_packet(sockfds[i], &reachicmps[i]);
+        }
       }
     }
   }
@@ -196,7 +201,10 @@ int main(int argc, char *argv[]) {
     printf("getprotobyname error\n");
     exit(1);
   }
-  int *socketfds = (int *)malloc(sizeof(int) * (argc - 1));
+
+  int *socketfds = (int *) malloc(sizeof(int) * (argc - 1));
+  int *reachicmps = (int *) malloc(sizeof(int) * (argc - 1));
+  memset(reachicmps, 0, sizeof(int) * (argc - 1));
 
   for (i = 1; i < argc; i++) {
     if ((socketfds[i - 1] = socket(AF_INET, SOCK_RAW, protocol->p_proto)) < 0) {
@@ -225,6 +233,7 @@ int main(int argc, char *argv[]) {
   pthread_t ntid;
   struct event_loop_arg arg = {
     socketfds,
+    reachicmps,
     argc - 1
   };
 
