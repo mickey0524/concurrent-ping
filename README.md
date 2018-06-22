@@ -2,21 +2,21 @@
 
 异步并发ping多个站点
 
-## single_ping
+## single\_ping
 
 一次ping一个站点，原生socket发送icmp包
 
-## multiple_ping
+## multiple\_ping
 
 一次ping多个站点，不过是同步的，也就是ping一个站点，等待包全部回来或超时，再ping下一个站点
 
-## async_multiple_ping
+## async\_multiple\_ping
 
-和multiple_ping完成类似的功能，不过是异步的，建立多个socket，一次性发送所有的icmp报文，回来一个响应包处理一个
+和multiple\_ping完成类似的功能，不过是异步的，建立多个socket，一次性发送所有的icmp报文，回来一个响应包处理一个
 
 ## 注意
 
-使用gcc编译生成可执行文件后，需要使用sudu调用root权限ping
+使用gcc编译生成可执行文件后，需要使用sudu调用root权限ping
 
 ## 例子
 
