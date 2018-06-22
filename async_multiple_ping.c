@@ -9,10 +9,11 @@
 #include <netinet/ip.h>
 #include <netinet/ip_icmp.h>
 #include <netdb.h>
+#include <fcntl.h>
 #include <pthread.h>
 
 #define PACKET_SIZE 4096
-#define MAX_WAIT_TIME 3 // 10s内包没回来， 
+#define MAX_WAIT_TIME 10 // 10s内包没回来， 
 #define MAX_SEND_PACKETS 3 // 发包次数
 
 char sendpacket[PACKET_SIZE];
@@ -156,14 +157,12 @@ void recv_packet(int *socketfd, int *reachicmps, int *all_reach_num)
 {
   int n = 0;
   int fromlen = sizeof(from);
-
   if ((n = recvfrom(*socketfd, recvpacket, sizeof(recvpacket), 0,
-    (struct sockaddr *)&from, (socklen_t *)&fromlen)) < 0) {
-    printf("recvfrom error\n");
-  }
-  gettimeofday(&tvrecv, NULL);
-  if (unpack(recvpacket, n, socketfd, reachicmps, all_reach_num) == -1) {
-    printf("unpack error\n");
+    (struct sockaddr *)&from, (socklen_t *)&fromlen)) > 0) {
+    gettimeofday(&tvrecv, NULL);
+    if (unpack(recvpacket, n, socketfd, reachicmps, all_reach_num) == -1) {
+      printf("unpack error\n");
+    }
   }
 }
 
@@ -199,16 +198,12 @@ void *event_loop(void *arg) {
     struct timeval tv;
     tv.tv_sec = MAX_WAIT_TIME;
     tv.tv_usec = 0;
-    printf("before\n");
     int retval = select(maxfd + 1, &rfds, NULL, NULL, &tv);
-    printf("after\n");
     if (retval == -1) {
       printf("select error\n");
       break;
     }
     else if (retval == 0) {
-      printf("timeout");
-      // continue;
       statistics(reachicmps, iparrs, rfslength);
       break;
     }
@@ -219,13 +214,11 @@ void *event_loop(void *arg) {
         }
       }
       if (all_reach_num == rfslength) {
-        printf("reachall\n");
         statistics(reachicmps, iparrs, rfslength);
         break;
       }
     }
   }
-  printf("return\n");
   return NULL;
 }
 
@@ -257,6 +250,9 @@ int main(int argc, char *argv[]) {
       exit(1);
     }
     iparrs[i - 1] = argv[i];
+
+    int flags = fcntl(socketfds[i - 1], F_GETFL, 0); //获取文件的flags值。
+    fcntl(socketfds[i - 1], F_SETFL, flags | O_NONBLOCK); //设置成非阻塞模式；
     setsockopt(socketfds[i - 1], SOL_SOCKET, SO_RCVBUF, &size, sizeof(size));
 
     bzero(&dest_addr, sizeof(dest_addr));
