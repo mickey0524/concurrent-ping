@@ -12,7 +12,7 @@
 #include <pthread.h>
 
 #define PACKET_SIZE 4096
-#define MAX_WAIT_TIME 5
+#define MAX_WAIT_TIME 3 // 10s内包没回来， 
 #define MAX_SEND_PACKETS 3 // 发包次数
 
 char sendpacket[PACKET_SIZE];
@@ -27,8 +27,19 @@ struct event_loop_arg
 {
   int *socketfds;
   int *reachicmps;
+  char **iparrs;
   int length;
 };
+
+void statistics(int *reachicmps, char **iparrs, int rfslength) {
+  printf("\n--------------------PING statistics-------------------\n");
+  int i;
+  
+  for (i = 0; i < rfslength; i++) {
+    printf("%s: %d packets transmitted, %d received , %%%d lost\n", iparrs[i], MAX_SEND_PACKETS,
+           reachicmps[i], (MAX_SEND_PACKETS - reachicmps[i]) / MAX_SEND_PACKETS * 100);
+  }
+}
 
 unsigned short cal_chksum(unsigned short *addr, int len) {
   int nleft = len;
@@ -102,7 +113,7 @@ void tv_sub(struct timeval *out, struct timeval *in) {
 /**
  * 解包
  */ 
-int unpack(char *buf, int len, int socketfd, int *reachicmps) {
+int unpack(char *buf, int len, int *socketfd, int *reachicmps, int *all_reach_num) {
   int i, iphdrlen;
   struct ip *ip;
   struct icmp *icmp;
@@ -111,7 +122,7 @@ int unpack(char *buf, int len, int socketfd, int *reachicmps) {
   ip = (struct ip *)buf;
   iphdrlen = ip->ip_hl << 2;
   icmp = (struct icmp *)(buf + iphdrlen);
-  if (icmp->icmp_id != socketfd) {
+  if (icmp->icmp_id != *socketfd) {
     return -2;
   }
   len -= iphdrlen;
@@ -126,6 +137,11 @@ int unpack(char *buf, int len, int socketfd, int *reachicmps) {
     printf("%d byte from %s: icmp_seq=%u ttl=%d time=%.3f ms\n", len,
            inet_ntoa(from.sin_addr), icmp->icmp_seq, ip->ip_ttl, rtt);
     *reachicmps += 1;
+    if (*reachicmps == MAX_SEND_PACKETS) {
+      *all_reach_num += 1;
+      close(*socketfd);
+      *socketfd = 0;
+    }
     return 0;
   }
   else {
@@ -136,17 +152,17 @@ int unpack(char *buf, int len, int socketfd, int *reachicmps) {
 /**
  * 收packet
  */ 
-void recv_packet(int socketfd, int *reachicmps)
+void recv_packet(int *socketfd, int *reachicmps, int *all_reach_num)
 {
   int n = 0;
   int fromlen = sizeof(from);
 
-  if ((n = recvfrom(socketfd, recvpacket, sizeof(recvpacket), 0,
+  if ((n = recvfrom(*socketfd, recvpacket, sizeof(recvpacket), 0,
     (struct sockaddr *)&from, (socklen_t *)&fromlen)) < 0) {
     printf("recvfrom error\n");
   }
   gettimeofday(&tvrecv, NULL);
-  if (unpack(recvpacket, n, socketfd, reachicmps) == -1) {
+  if (unpack(recvpacket, n, socketfd, reachicmps, all_reach_num) == -1) {
     printf("unpack error\n");
   }
 }
@@ -159,9 +175,11 @@ void *event_loop(void *arg) {
   int *sockfds = tmp->socketfds;
   int rfslength = tmp->length;
   int *reachicmps = tmp->reachicmps;
+  char **iparrs = tmp->iparrs;
 
   fd_set rfds;
   int maxfd = 0, i;
+  int all_reach_num = 0;
 
   while (1) {
     FD_ZERO(&rfds);
@@ -169,34 +187,45 @@ void *event_loop(void *arg) {
 
     for (i = 0; i < rfslength; i++) {
       // 把当前连接的文件描述符加入到集合中*/
-      FD_SET(sockfds[i], &rfds);
-      // 找出文件描述符集合中最大的文件描述符
-      if (maxfd < sockfds[i]) {
-        maxfd = sockfds[i];
+      if (sockfds[i] != 0) {
+        FD_SET(sockfds[i], &rfds);
+        // 找出文件描述符集合中最大的文件描述符
+        if (maxfd < sockfds[i]) {
+          maxfd = sockfds[i];
+        }
       }
     }
 
     struct timeval tv;
     tv.tv_sec = MAX_WAIT_TIME;
     tv.tv_usec = 0;
-
+    printf("before\n");
     int retval = select(maxfd + 1, &rfds, NULL, NULL, &tv);
-
+    printf("after\n");
     if (retval == -1) {
       printf("select error\n");
       break;
     }
     else if (retval == 0) {
-      continue;
+      printf("timeout");
+      // continue;
+      statistics(reachicmps, iparrs, rfslength);
+      break;
     }
     else {
       for (i = 0; i < rfslength; i++) {
         if (reachicmps[i] < MAX_SEND_PACKETS) {
-          recv_packet(sockfds[i], &reachicmps[i]);
+          recv_packet(&sockfds[i], &reachicmps[i], &all_reach_num);
         }
+      }
+      if (all_reach_num == rfslength) {
+        printf("reachall\n");
+        statistics(reachicmps, iparrs, rfslength);
+        break;
       }
     }
   }
+  printf("return\n");
   return NULL;
 }
 
@@ -219,6 +248,7 @@ int main(int argc, char *argv[]) {
 
   int *socketfds = (int *) malloc(sizeof(int) * (argc - 1)); // socket句柄数组
   int *reachicmps = (int *) malloc(sizeof(int) * (argc - 1)); // 记录每个站点回来的icmp帧数目的数组
+  char **iparrs = (char **) malloc(sizeof(char *) * (argc - 1)); // 记录ip
   memset(reachicmps, 0, sizeof(int) * (argc - 1));
 
   for (i = 1; i < argc; i++) {
@@ -226,6 +256,7 @@ int main(int argc, char *argv[]) {
       printf("socket[%d] error\n", i);
       exit(1);
     }
+    iparrs[i - 1] = argv[i];
     setsockopt(socketfds[i - 1], SOL_SOCKET, SO_RCVBUF, &size, sizeof(size));
 
     bzero(&dest_addr, sizeof(dest_addr));
@@ -250,6 +281,7 @@ int main(int argc, char *argv[]) {
   struct event_loop_arg arg = {
     socketfds,
     reachicmps,
+    iparrs,
     argc - 1
   };
 
