@@ -16,7 +16,7 @@
 
 ## 注意
 
-使用gcc编译生成可执行文件后，需要使用sudu调用root权限ping
+使用gcc编译生成可执行文件后，需要使用sudo调用root权限ping
 
 ## 例子
 
