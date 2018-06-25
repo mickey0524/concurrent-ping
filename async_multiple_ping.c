@@ -293,6 +293,12 @@ int main(int argc, char *argv[]) {
     close(socketfds[i]);
   }
   free(socketfds);
+  free(reachicmps);
+  free(iparrs);
+
+  socketfds = NULL;
+  reachicmps = NULL;
+  iparrs = NULL;
 
   return 0;
 }
